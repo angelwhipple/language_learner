@@ -19,11 +19,12 @@ def gen_normalized_ref_vowels(recorder, transcriber):
         print(f"Missing vowels: {" ".join(missing)}")
         msg = "Hmm, that wasn’t clear enough. Please try again, reading the sentence slowly and carefully."
     else:
+        sample.vowels.gen_reference_data()
         normalized = sample.vowels.normalize_z_score(
             *sample.vowels.get_mean_formant_values(),
             *sample.vowels.get_formant_std(),
         )
-        normalized.generate_reference_mapping('resources/ref_dict.json')
+        normalized.gen_reference_map('resources/custom_formant_data.json')
         msg = "Calibration successful."
     audio_proc.speak_feedback([msg])
 
