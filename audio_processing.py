@@ -1,6 +1,7 @@
 import csv
 import random
 import string
+import json
 import pyaudio
 import wave
 import librosa
@@ -45,36 +46,41 @@ def load_csv(filename):
     return header, data
 
 
-def normalize_reference_formants():
-    """
-    Normalizes F1,F2 values for each vowel in the reference dataset via linear compression and expansion
-    :returns: Dictionary of "vowel-formant-sex" : normalized value
-    """
-    header, data = load_csv("resources/vowel-formant-data.csv")
-    ref = {}
-    for i in range(3, len(header)):  # for each formant F1,F2
-        formant_values = {data[v][0]: int(data[v][i]) for v in range(len(data))}  # mapping (vowel : F1/F2 val)
-        f_max = max(formant_values.values())
-        for vowel, freq in formant_values.items():
-            ref[f"{vowel}-{header[i]}"] = round(freq / f_max, 2)
-    return ref
+# def normalize_reference_formants():
+#     """
+#     Normalizes F1,F2 values for each vowel in the Hillenbrand dataset via linear compression and expansion
+#     :returns: Dictionary of "vowel-formant-sex" : normalized value
+#     """
+#     header, data = load_csv("resources/hillenbrand_formant_data.csv")
+#     ref = {}
+#     for i in range(3, len(header)):  # for each formant F1,F2
+#         formant_values = {data[v][0]: int(data[v][i]) for v in range(len(data))}  # mapping (vowel : F1/F2 val)
+#         f_max = max(formant_values.values())
+#         for vowel, freq in formant_values.items():
+#             ref[f"{vowel}-{header[i]}"] = round(freq / f_max, 2)
+#     return ref
+#
+#
+# def evaluate_user_formants(user, ref, vowels, threshold=0.15):
+#     normalized_vowels = vowels.normalize_formants(user.max_f1, user.max_f2)
+#     fb = []
+#     for vowel in normalized_vowels.vowels:
+#         d1 = vowel.f1 - ref[f"{vowel.label}-F1-{user.sex}"]
+#         d2 = vowel.f2 - ref[f"{vowel.label}-F2-{user.sex}"]
+#         if abs(d1) > threshold and d1 > 0:
+#             fb.append(f"Vowel too open on {vowel.label}. Try raising your tongue to reduce mouth openness.")
+#         elif abs(d1) > threshold and d1 < 0:
+#             fb.append(f"Vowel too closed on {vowel.label}. Try lowering your tongue to increase mouth openness.")
+#         elif abs(d2) > threshold and d2 > 0:
+#             fb.append(f"Vowel unrounded on {vowel.label}. Try retracting your tongue or rounding your lips slightly.")
+#         elif abs(d2) > threshold and d2 < 0:
+#             fb.append(f"Vowel over-rounded on {vowel.label}. Try advancing your tongue or rounding your lips less.")
+#     return fb
 
 
-def evaluate_user_formants(user, ref, vowels, threshold=0.15):
-    normalized_vowels = vowels.normalize_formants(user.max_f1, user.max_f2)
-    fb = []
-    for vowel in normalized_vowels.vowels:
-        d1 = vowel.f1 - ref[f"{vowel.label}-F1-{user.sex}"]
-        d2 = vowel.f2 - ref[f"{vowel.label}-F2-{user.sex}"]
-        if abs(d1) > threshold and d1 > 0:
-            fb.append(f"Vowel too open on {vowel.label}. Try raising your tongue to reduce mouth openness.")
-        elif abs(d1) > threshold and d1 < 0:
-            fb.append(f"Vowel too closed on {vowel.label}. Try lowering your tongue to increase mouth openness.")
-        elif abs(d2) > threshold and d2 > 0:
-            fb.append(f"Vowel unrounded on {vowel.label}. Try retracting your tongue or rounding your lips slightly.")
-        elif abs(d2) > threshold and d2 < 0:
-            fb.append(f"Vowel over-rounded on {vowel.label}. Try advancing your tongue or rounding your lips less.")
-    return fb
+def load_reference_mapping(filename):
+    with open(filename, 'r') as f:
+        return json.load(f)
 
 
 def speak_feedback(feedback_list):
@@ -89,11 +95,12 @@ def speak_feedback(feedback_list):
 
 
 def validate_vowel_coverage(vowels):
-    present_vowels = set([vowel.label for vowel in vowels.vowels])
+    provided = set([vowel.label for vowel in vowels.vowels])
+    missing = []
     for vowel in ARPA_VOWELS:
-        if vowel not in present_vowels:
-            return False
-    return True
+        if vowel not in provided:
+            missing.append(vowel)
+    return missing
 
 
 class AudioRecorder:
@@ -104,7 +111,7 @@ class AudioRecorder:
         self.out_stream = self.p.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=CHUNK,
                                       start=False)
 
-    def record(self, seconds=5):
+    def record(self, seconds=5.0):
         print("Recording...")
         self.in_stream.start_stream()
         frames = []
@@ -210,31 +217,68 @@ class Vowels:
     def __init__(self, vowel_sequence):
         self.vowels = vowel_sequence
 
-    def normalize_formants(self, max_f1, max_f2):
-        normalized_vowels = []
+    # def normalize_max_scaling(self, max_f1, max_f2):
+    #     normalized = []
+    #     for vowel in self.vowels:
+    #         normalized.append(Vowel(
+    #             vowel.label,
+    #             round(vowel.f1 / max_f1, 2),
+    #             round(vowel.f2 / max_f2, 2),
+    #             vowel.duration
+    #         ))
+    #     return Vowels(normalized)
+
+    def normalize_z_score(self, mean_f1, mean_f2, f1_std, f2_std):
+        normalized = []
         for vowel in self.vowels:
-            normalized_vowels.append(Vowel(
+            normalized.append(Vowel(
                 vowel.label,
-                vowel.f1 / max_f1,
-                vowel.f2 / max_f2,
+                round((vowel.f1 - mean_f1) / f1_std, 2),
+                round((vowel.f2 - mean_f2) / f2_std, 2),
                 vowel.duration
             ))
-        return Vowels(normalized_vowels)
+        return Vowels(normalized)
 
     def get_max_formant_values(self):
         return max([vowel.f1 for vowel in self.vowels]), max([vowel.f2 for vowel in self.vowels])
 
-    def get_min_formant_values(self):
-        return min([vowel.f1 for vowel in self.vowels]), min([vowel.f2 for vowel in self.vowels])
+    def get_mean_formant_values(self):
+        n = len(self.vowels)
+        sum_f1 = sum(vowel.f1 for vowel in self.vowels)
+        sum_f2 = sum(vowel.f2 for vowel in self.vowels)
+        return sum_f1 / n, sum_f2 / n
 
-    def compare_formants(self, other):
-        pass
+    def get_formant_std(self):
+        mean_f1, mean_f2 = self.get_mean_formant_values()
+        var_f1 = sum((vowel.f1 - mean_f1)**2 for vowel in self.vowels) / len(self.vowels)
+        var_f2 = sum((vowel.f2 - mean_f2)**2 for vowel in self.vowels) / len(self.vowels)
+        return var_f1**0.5, var_f2**0.5
+
+    def compare_to_ref(self, ref, threshold=0.15):
+        fb = []
+        for vowel in self.vowels:
+            d1 = vowel.f1 - ref[f"{vowel.label}-F1"]
+            d2 = vowel.f2 - ref[f"{vowel.label}-F2"]
+            if abs(d1) > threshold and d1 > 0:
+                fb.append(f"Vowel too open on {vowel.label}. Try raising your tongue to reduce mouth openness.")
+            elif abs(d1) > threshold and d1 < 0:
+                fb.append(f"Vowel too closed on {vowel.label}. Try lowering your tongue to increase mouth openness.")
+            elif abs(d2) > threshold and d2 > 0:
+                fb.append(f"Vowel unrounded on {vowel.label}. Try retracting your tongue or rounding your lips slightly.")
+            elif abs(d2) > threshold and d2 < 0:
+                fb.append(f"Vowel over-rounded on {vowel.label}. Try advancing your tongue or rounding your lips less.")
+        return fb if fb else ["Great pronunciation on that exercise!"]
+
+    def generate_reference_mapping(self, filename):
+        ref = {}
+        for vowel in self.vowels:
+            ref[f"{vowel.label}-F1"] = vowel.f1
+            ref[f"{vowel.label}-F2"] = vowel.f2
+        with open(filename, 'w') as f:
+            json.dump(ref, f)
 
     def __str__(self):
-        out = ''
-        for vowel in self.vowels:
-            out += f'{vowel.label}, F1: {vowel.f1}, F2: {vowel.f2}, DUR: {vowel.duration}\n'
-        return
+        return ' '.join([vowel.label for vowel in self.vowels])
 
 
 class Vowel:
@@ -244,12 +288,16 @@ class Vowel:
         self.f2 = f2
         self.duration = duration
 
+    def __str__(self):
+        return f"{self.label} - F1:{self.f1}, F2: {self.f2}, ms: {self.duration}"
+
 
 class User:
     def __init__(self):
         self.sex = None
-        self.max_f1 = None
-        self.max_f2 = None
+        self.max_f1, self.max_f2 = None, None
+        self.mean_f1, self.mean_f2 = None, None
+        self.f1_std, self.f2_std = None, None
 
     def set_sex(self, sex):
         self.sex = sex
@@ -257,9 +305,15 @@ class User:
     def set_max_formants(self, max_f1, max_f2):
         self.max_f1, self.max_f2 = max_f1, max_f2
 
+    def set_mean_formants(self, mean_f1, mean_f2):
+        self.mean_f1, self.mean_f2 = mean_f1, mean_f2
+
+    def set_formant_std(self, f1_std, f2_std):
+        self.f1_std, self.f2_std = f1_std, f2_std
+
 
 if __name__ == "__main__":
-    ref = normalize_reference_formants()
+    ref = load_reference_mapping("resources/ref_dict.json")
     with open("resources/sample_sentences.txt", "r") as f:
         sentences = f.read().split("\n")
     recorder = AudioRecorder()
@@ -280,7 +334,7 @@ if __name__ == "__main__":
                 f"When you're ready, type R to start recording.\n"
                 f"You can type Q at any time to quit.\n\n"
                 f"Your input: "
-            )
+            ).strip().upper()
         else:
             sentence = sentences[random.randint(0, len(sentences) - 1)]
             user_input = input(
@@ -288,7 +342,7 @@ if __name__ == "__main__":
                 f"When you're ready, type R to start recording.\n"
                 f"You can type Q at any time to quit.\n\n"
                 f"Your input: "
-            )
+            ).strip().upper()
 
         if user_input == 'Q':
             recorder.destroy()
@@ -305,18 +359,25 @@ if __name__ == "__main__":
             sample = VocalSample('audio/sample.wav', 'audio/sample.TextGrid')
             print(f"\nPhonemes: {sample.phonemes}")
             if calibrating:
-                if not validate_vowel_coverage(sample.vowels):
+                if validate_vowel_coverage(sample.vowels):
                     msg = "Hmm, that wasn’t clear enough. Please read the sentence again slowly and carefully."
                     speak_feedback([msg])
                 else:
-                    user.set_max_formants(*sample.vowels.get_max_formant_values())
+                    # user.set_max_formants(*sample.vowels.get_max_formant_values())
+                    user.set_mean_formants(*sample.vowels.get_mean_formant_values())
+                    user.set_formant_std(*sample.vowels.get_formant_std())
+                    msg = "That was good, thanks!"
+                    speak_feedback([msg])
                     calibrating = False
             else:
                 expected = transcriber.text_to_phonemes(sentence, 'expected_phonemes.lab')
+                print(f"Expected phonemes: {expected}")
                 error = expected.compare(sample.phonemes)
                 print(f'Phoneme error (Levenshtein distance): {error}')
-
-                feedback = evaluate_user_formants(user, ref, sample.vowels)
+                print(f"\nVowels: {sample.vowels}")
+                # feedback = evaluate_user_formants(user, ref, sample.vowels)
+                normalized_vowels = sample.vowels.normalize_z_score(user.mean_f1, user.mean_f2, user.f1_std, user.f2_std)
+                feedback = normalized_vowels.compare_to_ref(ref)
                 speak_feedback(feedback)
         else:
             print(f"Input not recognized, please try again.")

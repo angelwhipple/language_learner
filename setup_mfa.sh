@@ -31,5 +31,5 @@ else
 fi
 
 rm -rf ~/Documents/MFA/temp/*
-mfa align ./audio/ english_us_arpa english_us_arpa ./audio/ --clean # Run for each new dataset
+mfa align ./audio/ english_us_arpa english_us_arpa ./audio/ --clean
 echo "Alignment complete."
