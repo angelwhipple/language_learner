@@ -35,7 +35,11 @@ The project is in its prototype phase, focusing on speech processing and affect 
 - LibriSpeech dataset (960h of English speech)
 - Meta wav2vec 2.0 ASR model
 
-### Tradeoffs/Considerations
+### Design Considerations
 1. IPA vs ARPA phonemes
    - ARPA: Easier to compare programmatically, Montreal Forced Alignment (MRA) optimized
    - IPA: More user friendly, human readable
+2. Normalization and thresholding of vowel formants
+   - Vowel-extrinsic, formant-intrinsic, speaker-intrinsic methods work best
+   - Lobanov (max grounding)
+   - Gerstman (max/min grounding)

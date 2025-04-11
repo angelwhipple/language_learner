@@ -1,3 +1,4 @@
+import csv
 import random
 import string
 import pyaudio
@@ -17,7 +18,7 @@ CHANNELS = 1
 RATE = 44100
 HERTZ = 16000  # 16 kHz
 
-ARPA_VOWELS = {"IY", "IH", "EY", "EH", "AE", "AA", "AO", "OW", "UH", "UW", "AH", "ER", "AW", "AY"}
+ARPA_VOWELS = {"IY", "IH", "EY", "EH", "AE", "AA", "AO", "OW", "UH", "UW", "AH", "ER"}  # missing AW, AY
 PUNCTUATION = string.punctuation.replace("'", "")
 
 
@@ -32,8 +33,47 @@ def run_mfa_alignment():
         )
         print("Alignment complete.")
     except subprocess.CalledProcessError as e:
-        print("MFA Script failed with error:")
-        print(e.stderr)
+        print(f"MFA Script failed with error: {e.stderr}")
+
+
+def load_csv(filename):
+    with open(filename, 'r') as csvfile:
+        csvreader = csv.reader(csvfile)
+        header = next(csvreader)
+        data = [row for row in csvreader]
+    return header, data
+
+
+def normalize_reference_formants():
+    """
+    Normalizes F1,F2 values for each vowel in the reference dataset via linear compression and expansion
+    :returns: Dictionary of "vowel-formant-sex" : normalized value
+    """
+    header, data = load_csv("resources/vowel-formant-data.csv")
+    ref = {}
+    for i in range(3, len(header)):  # for each formant F1,F2
+        formant_values = {data[v][0]: int(data[v][i]) for v in range(len(data))}  # mapping (vowel : F1/F2 val)
+        f_max = max(formant_values.values())
+        for vowel, freq in formant_values.items():
+            ref[f"{vowel}-{header[i]}"] = round(freq / f_max, 2)
+    return ref
+
+
+def evaluate_user_formants(user, ref, vowels, threshold=0.1):
+    normalized_vowels = vowels.normalize_formants(user.max_f1, user.max_f2)
+    for vowel in normalized_vowels:
+        d1 = abs(vowel.f1 - ref[f"{vowel.label}-F1-{user.sex}"])
+        d2 = abs(vowel.f2 - ref[f"{vowel.label}-F2-{user.sex}"])
+        if d1 > threshold or d2 > threshold:
+            print(f'Mispronounced vowel: {vowel}')
+
+
+def validate_vowel_coverage(phonemes):
+    phonemes = set([''.join([char for char in phoneme if not char.isdigit()]) for phoneme in phonemes])
+    for vowel in ARPA_VOWELS:
+        if vowel not in phonemes:
+            return False
+    return True
 
 
 class AudioRecorder:
@@ -129,7 +169,7 @@ class VocalSample:
                     formants = self.sound.to_formant_burg(time_step=0.01)
                     f1 = formants.get_value_at_time(1, midpoint)
                     f2 = formants.get_value_at_time(2, midpoint)
-                    vowels.append(Vowel(label, f1, f2, duration))
+                    vowels.append(Vowel(base_phoneme, f1, f2, duration))
 
         self.phonemes = Phonemes(phonemes)
         self.vowels = Vowels(vowels)
@@ -150,11 +190,22 @@ class Vowels:
     def __init__(self, vowel_sequence):
         self.vowels = vowel_sequence
 
-    def normalize_vowel_formants(self):
-        pass
+    def normalize_formants(self, max_f1, max_f2):
+        normalized_vowels = []
+        for vowel in self.vowels:
+            normalized_vowels.append(Vowel(
+                vowel.label,
+                vowel.f1 / max_f1,
+                vowel.f2 / max_f2,
+                vowel.duration
+            ))
+        return Vowels(normalized_vowels)
 
-    def evaluate_formants(self):
-        pass
+    def get_max_formant_values(self):
+        return max([vowel.f1 for vowel in self.vowels]), max([vowel.f2 for vowel in self.vowels])
+
+    def get_min_formant_values(self):
+        return min([vowel.f1 for vowel in self.vowels]), min([vowel.f2 for vowel in self.vowels])
 
     def __str__(self):
         out = ''
@@ -171,30 +222,76 @@ class Vowel:
         self.duration = duration
 
 
+class User:
+    def __init__(self):
+        self.sex = None
+        self.max_f1 = None
+        self.max_f2 = None
+
+    def set_sex(self, sex):
+        self.sex = sex
+
+    def set_max_formants(self, max_f1, max_f2):
+        self.max_f1, self.max_f2 = max_f1, max_f2
+
+
 if __name__ == "__main__":
+    ref = normalize_reference_formants()
+    # print(ref)
+
     with open("resources/sample_sentences.txt", "r") as f:
         sentences = f.read().split("\n")
     recorder = AudioRecorder()
     transcriber = Transcriber()
 
+    user = User()
+    calibrating = True
+    sentence = "The red bird may see blue boats where good cats walk in the mall."
     while True:
-        sentence = sentences[random.randint(0, len(sentences) - 1)]
-        print(f'\nYour sentence: {sentence}\n')
+        if calibrating and not user.sex:
+            user_input = input(
+                "Before we begin, please enter your sex (M/F): "
+            ).strip().upper()
+        elif calibrating and user.sex:
+            user_input = input(
+                f"To get things set up, please read the following sentences out loud:\n\n"
+                f"\"{sentence}\"\n\n"
+                f"This will help the program better understand your speech.\n"
+                f"When you're ready, type **R** to start recording.\n"
+                f"You can type **Q** at any time to quit.\n\n"
+                f"Your input: "
+            )
+        else:
+            sentence = sentences[random.randint(0, len(sentences) - 1)]
+            user_input = input(
+                f"\nYour sentence: {sentence}\n"
+                f"Q to quit program. R to start/stop recording: "
+            )
 
-        user_input = input("Q to quit program. R to start/stop recording: ")
         if user_input == 'Q':
             recorder.destroy()
             break
+        elif user_input == 'M' or user_input == 'F':
+            user.set_sex(user_input)
         elif user_input == 'R':
-            audio = recorder.record()
+            switch = lambda c: 7.5 if c else 5
+            audio = recorder.record(switch(calibrating))
             recorder.playback(audio)
             recorder.save(audio, 'audio_sample.wav')
-            expected = transcriber.text_to_phonemes(sentence, 'expected_phonemes.lab')
             transcriber.transcribe('audio_sample.wav', 'audio_sample.lab')
             run_mfa_alignment()
             sample = VocalSample('audio_sample.wav', 'audio_sample.TextGrid')
             print(sample.phonemes)
-            print(sample.vowels)
-
-            error = expected.compare(sample.phonemes)
-            print(f'Phoneme error (Levenshtein distance): {error}')
+            if calibrating:
+                if not validate_vowel_coverage(sample.phonemes):
+                    print("Hmm, that wasn’t clear enough. Please read the sentence again slowly and carefully.")
+                else:
+                    user.set_max_formants(*sample.vowels.get_max_formant_values())
+                    calibrating = False
+            else:
+                expected = transcriber.text_to_phonemes(sentence, 'expected_phonemes.lab')
+                error = expected.compare(sample.phonemes)
+                print(f'Phoneme error (Levenshtein distance): {error}')
+                evaluate_user_formants(user, ref, sample.vowels)
+        else:
+            print(f"Input not recognized, please try again.")
