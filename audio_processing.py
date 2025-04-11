@@ -11,6 +11,7 @@ from Levenshtein import distance as levenshtein_distance
 import parselmouth
 from textgrid import TextGrid
 import subprocess
+import pyttsx3
 
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -59,19 +60,38 @@ def normalize_reference_formants():
     return ref
 
 
-def evaluate_user_formants(user, ref, vowels, threshold=0.1):
+def evaluate_user_formants(user, ref, vowels, threshold=0.15):
     normalized_vowels = vowels.normalize_formants(user.max_f1, user.max_f2)
-    for vowel in normalized_vowels:
-        d1 = abs(vowel.f1 - ref[f"{vowel.label}-F1-{user.sex}"])
-        d2 = abs(vowel.f2 - ref[f"{vowel.label}-F2-{user.sex}"])
-        if d1 > threshold or d2 > threshold:
-            print(f'Mispronounced vowel: {vowel}')
+    fb = []
+    for vowel in normalized_vowels.vowels:
+        d1 = vowel.f1 - ref[f"{vowel.label}-F1-{user.sex}"]
+        d2 = vowel.f2 - ref[f"{vowel.label}-F2-{user.sex}"]
+        if abs(d1) > threshold and d1 > 0:
+            fb.append(f"Vowel too open on {vowel.label}. Try raising your tongue to reduce mouth openness.")
+        elif abs(d1) > threshold and d1 < 0:
+            fb.append(f"Vowel too closed on {vowel.label}. Try lowering your tongue to increase mouth openness.")
+        elif abs(d2) > threshold and d2 > 0:
+            fb.append(f"Vowel unrounded on {vowel.label}. Try retracting your tongue or rounding your lips slightly.")
+        elif abs(d2) > threshold and d2 < 0:
+            fb.append(f"Vowel over-rounded on {vowel.label}. Try advancing your tongue or rounding your lips less.")
+    return fb
 
 
-def validate_vowel_coverage(phonemes):
-    phonemes = set([''.join([char for char in phoneme if not char.isdigit()]) for phoneme in phonemes])
+def speak_feedback(feedback_list):
+    engine = pyttsx3.init()
+    engine.setProperty('rate', 150)  # Speed: 150 words/min
+    engine.setProperty('volume', 1)  # Volume 0-1
+
+    for msg in feedback_list:
+        print(f"OS: {msg}")
+        engine.say(msg)
+        engine.runAndWait()
+
+
+def validate_vowel_coverage(vowels):
+    present_vowels = set([vowel.label for vowel in vowels.vowels])
     for vowel in ARPA_VOWELS:
-        if vowel not in phonemes:
+        if vowel not in present_vowels:
             return False
     return True
 
@@ -207,6 +227,9 @@ class Vowels:
     def get_min_formant_values(self):
         return min([vowel.f1 for vowel in self.vowels]), min([vowel.f2 for vowel in self.vowels])
 
+    def compare_formants(self, other):
+        pass
+
     def __str__(self):
         out = ''
         for vowel in self.vowels:
@@ -237,8 +260,6 @@ class User:
 
 if __name__ == "__main__":
     ref = normalize_reference_formants()
-    # print(ref)
-
     with open("resources/sample_sentences.txt", "r") as f:
         sentences = f.read().split("\n")
     recorder = AudioRecorder()
@@ -254,18 +275,19 @@ if __name__ == "__main__":
             ).strip().upper()
         elif calibrating and user.sex:
             user_input = input(
-                f"To get things set up, please read the following sentences out loud:\n\n"
+                f"To help the program better understand your speech, please read the following sentence out loud:\n\n"
                 f"\"{sentence}\"\n\n"
-                f"This will help the program better understand your speech.\n"
-                f"When you're ready, type **R** to start recording.\n"
-                f"You can type **Q** at any time to quit.\n\n"
+                f"When you're ready, type R to start recording.\n"
+                f"You can type Q at any time to quit.\n\n"
                 f"Your input: "
             )
         else:
             sentence = sentences[random.randint(0, len(sentences) - 1)]
             user_input = input(
-                f"\nYour sentence: {sentence}\n"
-                f"Q to quit program. R to start/stop recording: "
+                f"\nYour sentence: {sentence}\n\n"
+                f"When you're ready, type R to start recording.\n"
+                f"You can type Q at any time to quit.\n\n"
+                f"Your input: "
             )
 
         if user_input == 'Q':
@@ -277,14 +299,15 @@ if __name__ == "__main__":
             switch = lambda c: 7.5 if c else 5
             audio = recorder.record(switch(calibrating))
             recorder.playback(audio)
-            recorder.save(audio, 'audio_sample.wav')
-            transcriber.transcribe('audio_sample.wav', 'audio_sample.lab')
+            recorder.save(audio, 'audio/sample.wav')
+            transcriber.transcribe('audio/sample.wav', 'audio/sample.lab')
             run_mfa_alignment()
-            sample = VocalSample('audio_sample.wav', 'audio_sample.TextGrid')
-            print(sample.phonemes)
+            sample = VocalSample('audio/sample.wav', 'audio/sample.TextGrid')
+            print(f"\nPhonemes: {sample.phonemes}")
             if calibrating:
-                if not validate_vowel_coverage(sample.phonemes):
-                    print("Hmm, that wasn’t clear enough. Please read the sentence again slowly and carefully.")
+                if not validate_vowel_coverage(sample.vowels):
+                    msg = "Hmm, that wasn’t clear enough. Please read the sentence again slowly and carefully."
+                    speak_feedback([msg])
                 else:
                     user.set_max_formants(*sample.vowels.get_max_formant_values())
                     calibrating = False
@@ -292,6 +315,8 @@ if __name__ == "__main__":
                 expected = transcriber.text_to_phonemes(sentence, 'expected_phonemes.lab')
                 error = expected.compare(sample.phonemes)
                 print(f'Phoneme error (Levenshtein distance): {error}')
-                evaluate_user_formants(user, ref, sample.vowels)
+
+                feedback = evaluate_user_formants(user, ref, sample.vowels)
+                speak_feedback(feedback)
         else:
             print(f"Input not recognized, please try again.")
