@@ -5,7 +5,7 @@ class VideoCapture:
     def __init__(self, index=0):
         self.camera = cv2.VideoCapture(index)
         if not self.camera.isOpened():
-            raise SystemError('Failed to open camera. Try allowing the program to access your camera, then try again.')
+            raise SystemError('Failed to open camera. Try granting the program access to your camera, then try again.')
 
     def destroy(self):
         self.camera.release()
