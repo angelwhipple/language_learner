@@ -47,4 +47,7 @@ The project is in its prototype phase, focusing on speech processing and affect 
    - Lobanov (max scaling)
    - Gerstman (max/min scaling)
    - Z-score
-3. Speaker-extrinsic vs. speaker-intrinsic reference formant data
+3. Hillenbrand vs custom formant data
+4. MRA optimization
+   - Job allocation
+   - Beam width tuning

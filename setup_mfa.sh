@@ -1,5 +1,7 @@
 #!/bin/bash
 
+NUM_CPUS=$(sysctl -n hw.ncpu)
+MFA_NUM_JOBS=$((NUM_CPUS * 3 / 4))
 eval "$(conda shell.bash hook)"
 
 # Check if the "aligner" environment exists
@@ -31,5 +33,5 @@ else
 fi
 
 rm -rf ~/Documents/MFA/temp/*
-mfa align ./audio/ english_us_arpa english_us_arpa ./audio/ --clean
+mfa align ./audio/ english_us_arpa english_us_arpa ./audio/ --clean --num_jobs $MFA_NUM_JOBS
 echo "Alignment complete."
