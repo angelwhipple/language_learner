@@ -46,10 +46,10 @@ item []:
             text = "" 
         intervals [9]:
             xmin = 3.3 
-            xmax = 3.73 
+            xmax = 3.75 
             text = "dogs" 
         intervals [10]:
-            xmin = 3.73 
+            xmin = 3.75 
             xmax = 4.15 
             text = "saw" 
         intervals [11]:
@@ -106,10 +106,10 @@ item []:
             text = "the" 
         intervals [24]:
             xmin = 8.79 
-            xmax = 9.31 
+            xmax = 9.28 
             text = "peer" 
         intervals [25]:
-            xmin = 9.31 
+            xmin = 9.28 
             xmax = 9.98458 
             text = "" 
     item [2]:
@@ -208,10 +208,10 @@ item []:
             text = "G" 
         intervals [23]:
             xmin = 3.69 
-            xmax = 3.73 
+            xmax = 3.75 
             text = "Z" 
         intervals [24]:
-            xmin = 3.73 
+            xmin = 3.75 
             xmax = 3.94 
             text = "S" 
         intervals [25]:
@@ -232,10 +232,10 @@ item []:
             text = "B" 
         intervals [29]:
             xmin = 4.8 
-            xmax = 4.9 
+            xmax = 4.91 
             text = "L" 
         intervals [30]:
-            xmin = 4.9 
+            xmin = 4.91 
             xmax = 5.18 
             text = "UW1" 
         intervals [31]:
@@ -272,10 +272,10 @@ item []:
             text = "B" 
         intervals [39]:
             xmin = 6.23 
-            xmax = 6.39 
+            xmax = 6.4 
             text = "OW1" 
         intervals [40]:
-            xmin = 6.39 
+            xmin = 6.4 
             xmax = 6.52 
             text = "T" 
         intervals [41]:
@@ -356,9 +356,9 @@ item []:
             text = "IH1" 
         intervals [60]:
             xmin = 9.12 
-            xmax = 9.31 
+            xmax = 9.28 
             text = "R" 
         intervals [61]:
-            xmin = 9.31 
+            xmin = 9.28 
             xmax = 9.98458 
             text = "" 

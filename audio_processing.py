@@ -14,6 +14,10 @@ from textgrid import TextGrid
 import subprocess
 import pyttsx3
 import time
+import pytermgui as ptg
+from pytermgui import tim
+import warnings
+import logging
 
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -217,16 +221,16 @@ class Vowels:
 
     def get_formant_std(self):
         mean_f1, mean_f2 = self.get_mean_formant_values()
-        var_f1 = sum((vowel.f1 - mean_f1)**2 for vowel in self.vowels) / len(self.vowels)
-        var_f2 = sum((vowel.f2 - mean_f2)**2 for vowel in self.vowels) / len(self.vowels)
-        return var_f1**0.5, var_f2**0.5
+        var_f1 = sum((vowel.f1 - mean_f1) ** 2 for vowel in self.vowels) / len(self.vowels)
+        var_f2 = sum((vowel.f2 - mean_f2) ** 2 for vowel in self.vowels) / len(self.vowels)
+        return var_f1 ** 0.5, var_f2 ** 0.5
 
-    def compare_to_ref(self, ref_mean, ref_std, threshold=0.15):
+    def compare_to_ref(self, ref_mean, ref_std, threshold=2.5):
         # Normalize raw F1,F2 by the reference values before comparison
         normalized = self.normalize_z_score(ref_mean["F1"], ref_mean["F2"], ref_std["F1"], ref_std["F2"])
         fb = []
         for vowel in normalized.vowels:
-            if abs(vowel.f1) > 2.5*ref_std["F1"] or abs(vowel.f2) > 2.5*ref_std["F2"]:
+            if abs(vowel.f1) > threshold or abs(vowel.f2) > threshold:
                 fb.append(f"Your pronunciation of {vowel.label} needs work.")
         return fb if fb else ["Great pronunciation on that exercise!"]
 
@@ -272,7 +276,9 @@ class User:
 
 
 if __name__ == "__main__":
-    # ref = load_reference_json("resources/custom_formant_data.json")
+    warnings.filterwarnings("ignore")
+    logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+
     ref_std = load_reference_json("resources/custom_std_data.json")
     ref_mean = load_reference_json("resources/custom_mean_data.json")
     with open("resources/sample_sentences.txt", "r") as f:
@@ -282,26 +288,18 @@ if __name__ == "__main__":
     transcriber = Transcriber()
     user = User()
     calibrating = True
-    # sentence = "The red bird may see blue boats where good cats walk in the mall."
     sentence = "He sits near red ants. Dogs saw two blue and grey boats. Her son could hum by the pier."
     while True:
         if calibrating:
-            user_input = input(
-                f"To help the program better understand your speech, please read the following sentence out loud:\n\n"
-                f"\"{sentence}\"\n\n"
-                f"When you're ready, type R to start recording.\n"
-                f"You can type Q at any time to quit.\n\n"
-                f"Your input: "
-            ).strip().upper()
+            tim.print(f"To help the program better understand your speech, please read the following out loud:\n\n"
+                      f"[bold green]{sentence}[/bold green]\n")
         else:
             sentence = sentences[random.randint(0, len(sentences) - 1)]
-            user_input = input(
-                f"\nYour sentence: {sentence}\n\n"
-                f"When you're ready, type R to start recording.\n"
-                f"You can type Q at any time to quit.\n\n"
-                f"Your input: "
-            ).strip().upper()
+            tim.print(f"\n[bold green]Your sentence: {sentence}[/bold green]\n")
 
+        tim.print(f"When you're ready, type [bold]R[/bold] to start recording.\n"
+                  f"You can type [bold]Q[/bold] at any time to quit.\n")
+        user_input = input(f"> ").strip().upper()
         if user_input == 'Q':
             recorder.destroy()
             break
@@ -313,7 +311,6 @@ if __name__ == "__main__":
             transcriber.transcribe('audio/sample.wav', 'audio/sample.lab')
             run_mfa_alignment()
             sample = VocalSample('audio/sample.wav', 'audio/sample.TextGrid')
-            print(f"\nPhonemes: {sample.phonemes}")
             if calibrating:
                 if validate_vowel_coverage(sample.vowels):
                     msg = "Hmm, that wasn’t clear enough. Please read the sentence again slowly and carefully."
@@ -323,6 +320,7 @@ if __name__ == "__main__":
                     speak_feedback([msg])
                     calibrating = False
             else:
+                print(f"\nPhonemes: {sample.phonemes}")
                 expected = transcriber.text_to_phonemes(sentence, 'expected_phonemes.lab')
                 print(f"Expected phonemes: {expected}")
                 error = expected.compare(sample.phonemes)
@@ -332,4 +330,5 @@ if __name__ == "__main__":
                 feedback = sample.vowels.compare_to_ref(ref_mean, ref_std)
                 speak_feedback(feedback)
         else:
-            print(f"Input not recognized, please try again.")
+            msg = "Input not recognized, please try again.\n"
+            speak_feedback([msg])
