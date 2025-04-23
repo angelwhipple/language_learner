@@ -40,10 +40,11 @@ class VideoCapture:
 
 if __name__ == "__main__":
     cap = VideoCapture()
+    cap.destroy()
 
-    while True:
-        frames, timestamps = cap.record(5)
-        cv2.imshow('Camera Feed', frames[-1])
-        cap.analyze_emotion(frames[-1])
-        cv2.waitKey(0)
+    # while True:
+    #     frames, timestamps = cap.record(5)
+    #     cv2.imshow('Camera Feed', frames[-1])
+    #     cap.analyze_emotion(frames[-1])
+    #     cv2.waitKey(0)
 
