@@ -1,0 +1,48 @@
+BoxLayout:
+    orientation: 'vertical'
+
+    Label:
+        text: f"[b]Welcome to the Language Learner, {app.user_name}[/b]"
+        size_hint: 1, 0.15
+        markup: True
+
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint: 1, 0.7
+
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint: 0.5, 1
+            padding: 20     # px
+
+            Label:
+                text: f"[b]Your sentence[/b]"
+                markup: True
+            Label:
+                text: f"{app.sentence}"
+                text_size: self.width, None
+                halign: 'center'
+                markup: True
+
+        BoxLayout:
+            orientation: 'vertical'
+            size_hint: 0.5, 1
+            padding: 20
+
+            Label:
+                text: f"[b]Evaluation[/b]"
+                markup: True
+            Label:
+                text: f"{app.evaluation}"
+                text_size: self.width, None
+                halign: 'center'
+                markup: True
+
+    BoxLayout:
+        orientation: 'horizontal'
+        size_hint: 1, 0.15
+
+        Button:
+            text: "Quit program"
+        Button:
+            text: "Record audio"

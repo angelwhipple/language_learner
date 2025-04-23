@@ -272,10 +272,10 @@ item []:
             text = "B" 
         intervals [39]:
             xmin = 6.23 
-            xmax = 6.4 
+            xmax = 6.39 
             text = "OW1" 
         intervals [40]:
-            xmin = 6.4 
+            xmin = 6.39 
             xmax = 6.52 
             text = "T" 
         intervals [41]:

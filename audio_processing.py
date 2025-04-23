@@ -1,5 +1,3 @@
-import csv
-import random
 import string
 import json
 import pyaudio
@@ -12,12 +10,10 @@ from Levenshtein import distance as levenshtein_distance
 import parselmouth
 from textgrid import TextGrid
 import subprocess
-import pyttsx3
 import time
-import pytermgui as ptg
-from pytermgui import tim
-import warnings
-import logging
+from scipy.io import wavfile
+import matplotlib.pyplot as plt
+
 
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
@@ -26,7 +22,21 @@ RATE = 44100
 HERTZ = 16000  # 16 kHz
 
 ARPA_VOWELS = {"IY", "IH", "EY", "EH", "AE", "AA", "AO", "OW", "UH", "UW", "AH", "ER"}  # missing AW, AY
+ARPA_TO_IPA = {
+    "AA": "ɑ", "AE": "æ", "AH": "ʌ", "AO": "ɔ", "AW": "aʊ", "AY": "aɪ",
+    "B": "b", "CH": "tʃ", "D": "d", "DH": "ð", "EH": "ɛ", "ER": "ɝ",
+    "EY": "eɪ", "F": "f", "G": "ɡ", "HH": "h", "IH": "ɪ", "IY": "i",
+    "JH": "dʒ", "K": "k", "L": "l", "M": "m", "N": "n", "NG": "ŋ",
+    "OW": "oʊ", "OY": "ɔɪ", "P": "p", "R": "ɹ", "S": "s", "SH": "ʃ",
+    "T": "t", "TH": "θ", "UH": "ʊ", "UW": "u", "V": "v", "W": "w",
+    "Y": "j", "Z": "z", "ZH": "ʒ"
+}
 PUNCTUATION = string.punctuation.replace("'", "")
+
+
+def arpa_to_ipa(arpa_phoneme):
+    base = ''.join([c for c in arpa_phoneme if not c.isdigit()])
+    return ARPA_TO_IPA.get(base, None)
 
 
 def run_mfa_alignment():
@@ -45,30 +55,6 @@ def run_mfa_alignment():
         print(f"MFA Script failed with error: {e.stderr}")
 
 
-def load_csv(filename):
-    with open(filename, 'r') as csvfile:
-        csvreader = csv.reader(csvfile)
-        header = next(csvreader)
-        data = [row for row in csvreader]
-    return header, data
-
-
-def load_reference_json(filename):
-    with open(filename, 'r') as f:
-        return json.load(f)
-
-
-def speak_feedback(feedback_list):
-    engine = pyttsx3.init()
-    engine.setProperty('rate', 150)  # Speed: 150 words/min
-    engine.setProperty('volume', 1)  # Volume 0-1
-
-    for msg in feedback_list:
-        print(f"OS: {msg}")
-        engine.say(msg)
-        engine.runAndWait()
-
-
 def validate_vowel_coverage(vowels):
     provided = set([vowel.label for vowel in vowels.vowels])
     missing = []
@@ -76,6 +62,19 @@ def validate_vowel_coverage(vowels):
         if vowel not in provided:
             missing.append(vowel)
     return missing
+
+
+def generate_spectrogram(audio_path):
+    sample_rate, samples = wavfile.read(f"audio/{audio_path}.wav")
+
+    plt.figure(figsize=(10, 4))
+    plt.specgram(samples, Fs=sample_rate, NFFT=1024, noverlap=512, cmap='inferno')
+    plt.xlabel(f"Time [s]")
+    plt.ylabel(f"Frequency [Hz]")
+    plt.colorbar(label='Intensity [dB]')
+    plt.tight_layout()
+    plt.savefig(f"spectrogram/{audio_path}")
+    print("Spectrogram generated.")
 
 
 class AudioRecorder:
@@ -126,15 +125,13 @@ class Transcriber:
         self.processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h")
         self.model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
 
-    def text_to_phonemes(self, text, filename):
-        phonemes = [
-            phoneme
-            for word in text.split()
-            for phoneme in self.dict[word.strip(PUNCTUATION).lower()][0]
-        ]
-        with open(filename, "w") as f:
-            f.write(" ".join(phonemes))
-        return Phonemes(phonemes)
+    def text_to_phonemes(self, text):
+        words, phonemes_by_word = [], []
+        for word in text.split():
+            phonemes = self.dict[word.strip(PUNCTUATION).lower()][0]
+            words.append(word)
+            phonemes_by_word.append(Phonemes(phonemes))
+        return words, phonemes_by_word
 
     def transcribe(self, audio_file, filename):
         audio, sr = librosa.load(audio_file, sr=HERTZ)
@@ -152,25 +149,57 @@ class VocalSample:
     def __init__(self, audio_file, textgrid_file):
         self.sound = parselmouth.Sound(audio_file)
         self.textgrid = TextGrid.fromFile(textgrid_file)
-        vowels = []
-        phonemes = []
+        self.words = []
+        word_intervals = []
 
         # Extract f1, f2, duration from MRA audio textgrid
-        for interval in self.textgrid.getFirst("phones"):
-            label = interval.mark.strip().upper()
-            if label:
-                phonemes.append(label)
-                base_phoneme = ''.join([c for c in label if not c.isdigit()])
-                if base_phoneme in ARPA_VOWELS:
-                    duration = interval.maxTime - interval.minTime
-                    midpoint = (interval.minTime + interval.maxTime) / 2
-                    formants = self.sound.to_formant_burg(time_step=0.01)
-                    f1 = formants.get_value_at_time(1, midpoint)
-                    f2 = formants.get_value_at_time(2, midpoint)
-                    vowels.append(Vowel(base_phoneme, f1, f2, duration))
+        for interval in self.textgrid.getFirst("words"):
+            word = interval.mark.strip().lower()
+            if word:
+                word_intervals.append((word, interval.minTime, interval.maxTime))
 
-        self.phonemes = Phonemes(phonemes)
-        self.vowels = Vowels(vowels)
+        for word, word_start, word_end in word_intervals:
+            phonemes = []
+            vowels = []
+            for interval in self.textgrid.getFirst("phones"):
+                phoneme = interval.mark.strip().upper()
+                if phoneme and interval.minTime >= word_start and interval.maxTime <= word_end:
+                    phonemes.append(phoneme)
+                    base_phoneme = ''.join([c for c in phoneme if not c.isdigit()])
+                    if base_phoneme in ARPA_VOWELS:
+                        duration = interval.maxTime - interval.minTime
+                        midpoint = (interval.minTime + interval.maxTime) / 2
+                        formants = self.sound.to_formant_burg(time_step=0.01)
+                        f1 = formants.get_value_at_time(1, midpoint)
+                        f2 = formants.get_value_at_time(2, midpoint)
+                        vowels.append(Vowel(base_phoneme, f1, f2, duration))
+            self.words.append(Word(word, phonemes, vowels, word_start, word_end))
+
+    def evaluate_pronunciation(self, ref_words, ref_phonemes):
+        mispronounced, readable_fb, ssml_fb = [], [], []
+
+        for i, (expected, spoken_word) in enumerate(zip(ref_words, self.words)):
+            error, readable, ssml = ref_phonemes[i].compare(spoken_word.phonemes)
+            if error >= 2:
+                mispronounced.append((expected, error))  # tuple of (word, error)
+                readable_fb.append(f"Let's work on your pronunciation of: {expected}")
+                readable_fb.extend(readable)
+                ssml_fb.append(None)
+                ssml_fb.extend(ssml)
+
+        if mispronounced:
+            readable_fb.insert(0, f"You mispronounced {len(mispronounced)} words.")
+            ssml_fb.insert(0, None)
+        return mispronounced, readable_fb, ssml_fb
+
+
+class Word:
+    def __init__(self, text, phoneme_arr, vowel_arr, start, end):
+        self.text = text
+        self.phonemes = Phonemes(phoneme_arr)
+        self.vowels = Vowels(vowel_arr)
+        self.start_time = start
+        self.end_time = end
 
 
 class Phonemes:
@@ -178,7 +207,40 @@ class Phonemes:
         self.phonemes = phonemes
 
     def compare(self, other):
-        return levenshtein_distance(self.phonemes, other.phonemes)
+        readable_fb, ssml_fb = [], []
+        distance = levenshtein_distance(self.phonemes, other.phonemes)
+        for (expected, actual) in zip(self.get_base_phonemes(), other.get_base_phonemes()):
+            ipa_expected, ipa_actual = arpa_to_ipa(expected), arpa_to_ipa(actual)
+            if actual == 'SPN':
+                ssml = f'''
+                <speak>
+                <prosody rate="medium">Trying pronouncing </prosody>
+                <break time="500ms"/>
+                <prosody rate="x-slow"><phoneme alphabet="ipa" ph="{ipa_expected}">{expected}</phoneme></prosody>
+                <break time="500ms"/>
+                <prosody rate="medium"> a bit clearer.</prosody>
+                </speak>
+                '''
+                readable_fb.append(f"Try pronouncing {expected} a bit clearer.")
+                ssml_fb.append(ssml)
+            elif expected != actual:
+                ssml = f'''
+                <speak>
+                <prosody rate="medium">Instead of </prosody>
+                <break time="500ms"/>
+                <prosody rate="x-slow"><phoneme alphabet="ipa" ph="{ipa_actual}">{actual}</phoneme></prosody>
+                <break time="500ms"/>
+                <prosody rate="medium"> try </prosody>
+                <break time="500ms"/>
+                <prosody rate="x-slow"><phoneme alphabet="ipa" ph="{ipa_expected}">{ipa_expected}</phoneme></prosody>
+                </speak>
+                '''
+                readable_fb.append(f"Instead of {actual}, try {expected}.")
+                ssml_fb.append(ssml)
+        return distance, readable_fb, ssml_fb
+
+    def get_base_phonemes(self):
+        return [''.join([c for c in phoneme if not c.isdigit()]) for phoneme in self.phonemes]
 
     def __str__(self):
         return " ".join(self.phonemes)
@@ -228,11 +290,23 @@ class Vowels:
     def compare_to_ref(self, ref_mean, ref_std, threshold=2.5):
         # Normalize raw F1,F2 by the reference values before comparison
         normalized = self.normalize_z_score(ref_mean["F1"], ref_mean["F2"], ref_std["F1"], ref_std["F2"])
-        fb = []
+        ssml_fb = []
+        readable_fb = []
         for vowel in normalized.vowels:
             if abs(vowel.f1) > threshold or abs(vowel.f2) > threshold:
-                fb.append(f"Your pronunciation of {vowel.label} needs work.")
-        return fb if fb else ["Great pronunciation on that exercise!"]
+                ipa = arpa_to_ipa(vowel.label)
+                ssml = f'''
+                <speak>
+                <prosody rate="medium">Your pronunciation of </prosody>
+                <break time="500ms"/>
+                <prosody rate="x-slow"><phoneme alphabet="ipa" ph="{ipa}">{vowel.label}</phoneme></prosody>
+                <break time="500ms"/>
+                <prosody rate="medium"> needs some work.</prosody>
+                </speak>
+                '''
+                ssml_fb.append(ssml)
+                readable_fb.append(f"Your pronunciation of {vowel.label} needs some work.")
+        return readable_fb, ssml_fb
 
     def gen_reference_data(self):
         mean_f1, mean_f2 = self.get_mean_formant_values()
@@ -265,70 +339,3 @@ class Vowel:
 
     def __str__(self):
         return f"{self.label} - F1:{self.f1}, F2: {self.f2}, ms: {self.duration}"
-
-
-class User:
-    def __init__(self):
-        self.sex = None
-
-    def set_sex(self, sex):
-        self.sex = sex
-
-
-if __name__ == "__main__":
-    warnings.filterwarnings("ignore")
-    logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
-
-    ref_std = load_reference_json("resources/custom_std_data.json")
-    ref_mean = load_reference_json("resources/custom_mean_data.json")
-    with open("resources/sample_sentences.txt", "r") as f:
-        sentences = f.read().split("\n")
-
-    recorder = AudioRecorder()
-    transcriber = Transcriber()
-    user = User()
-    calibrating = True
-    sentence = "He sits near red ants. Dogs saw two blue and grey boats. Her son could hum by the pier."
-    while True:
-        if calibrating:
-            tim.print(f"To help the program better understand your speech, please read the following out loud:\n\n"
-                      f"[bold green]{sentence}[/bold green]\n")
-        else:
-            sentence = sentences[random.randint(0, len(sentences) - 1)]
-            tim.print(f"\n[bold green]Your sentence: {sentence}[/bold green]\n")
-
-        tim.print(f"When you're ready, type [bold]R[/bold] to start recording.\n"
-                  f"You can type [bold]Q[/bold] at any time to quit.\n")
-        user_input = input(f"> ").strip().upper()
-        if user_input == 'Q':
-            recorder.destroy()
-            break
-        elif user_input == 'R':
-            switch = lambda c: 10 if c else 5
-            audio = recorder.record(switch(calibrating))
-            recorder.playback(audio)
-            recorder.save(audio, 'audio/sample.wav')
-            transcriber.transcribe('audio/sample.wav', 'audio/sample.lab')
-            run_mfa_alignment()
-            sample = VocalSample('audio/sample.wav', 'audio/sample.TextGrid')
-            if calibrating:
-                if validate_vowel_coverage(sample.vowels):
-                    msg = "Hmm, that wasn’t clear enough. Please read the sentence again slowly and carefully."
-                    speak_feedback([msg])
-                else:
-                    msg = "That was good, thanks!"
-                    speak_feedback([msg])
-                    calibrating = False
-            else:
-                print(f"\nPhonemes: {sample.phonemes}")
-                expected = transcriber.text_to_phonemes(sentence, 'expected_phonemes.lab')
-                print(f"Expected phonemes: {expected}")
-                error = expected.compare(sample.phonemes)
-                print(f'Phoneme error (Levenshtein distance): {error}')
-                print(f"\nVowels: {sample.vowels}")
-                # feedback = evaluate_user_formants(user, ref, sample.vowels)
-                feedback = sample.vowels.compare_to_ref(ref_mean, ref_std)
-                speak_feedback(feedback)
-        else:
-            msg = "Input not recognized, please try again.\n"
-            speak_feedback([msg])
