@@ -1,6 +1,4 @@
-from main import speak_feedback
 import audio_processing as audio_proc
-from pytermgui import tim
 
 
 def gen_normalized_ref_vowels(recorder, transcriber):
@@ -27,8 +25,8 @@ def gen_normalized_ref_vowels(recorder, transcriber):
             *sample.vowels.get_formant_std(),
         )
         normalized.gen_reference_map('resources/custom_formant_data.json')
-        msg = "That was good, thanks!."
-    speak_feedback([msg], None)
+        msg = "Calibration successful."
+    audio_proc.speak_feedback([msg])
 
 
 if __name__ == "__main__":
@@ -36,11 +34,13 @@ if __name__ == "__main__":
     transcriber = audio_proc.Transcriber()
 
     sentence = "He sits near red ants. Dogs saw two blue and grey boats. Her son could hum by the pier."
-    tim.print(f"Please read the following sentence to produce a reference of your vowel pronunciation:\n\n"
-              f"[bold green]{sentence}[/bold green]\n")
-    tim.print(f"When you're ready, type [bold]R[/bold] to start recording.\n"
-              f"You can type [bold]Q[/bold] at any time to quit.\n")
-    user_input = input(f"> ").strip().upper()
+    user_input = input(
+        f"Please read the following sentence to produce a reference of your vowel pronunciation:\n\n"
+        f"\"{sentence}\"\n\n"
+        f"When you're ready, type R to start recording.\n"
+        f"You can type Q at any time to quit.\n\n"
+        f"Input: "
+    ).strip().upper()
     if user_input == 'Q':
         recorder.destroy()
         exit()

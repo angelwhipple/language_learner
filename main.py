@@ -9,12 +9,11 @@ import random
 from pytermgui import tim
 import boto3
 from playsound import playsound
-from dotenv import load_dotenv
-import os
-load_dotenv()
-
-AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
-AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+from kivy.app import App
+from kivy.uix.image import Image
+from kivy.uix.boxlayout import BoxLayout
+from kivy.clock import Clock
+from kivy.graphics.texture import Texture
 
 
 def load_text_file(filename):
