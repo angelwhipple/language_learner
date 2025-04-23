@@ -176,21 +176,23 @@ class VocalSample:
             self.words.append(Word(word, phonemes, vowels, word_start, word_end))
 
     def evaluate_pronunciation(self, ref_words, ref_phonemes):
-        mispronounced, readable_fb, ssml_fb = [], [], []
+        bit_errors, readable_fb, ssml_fb = [], [], []
 
         for i, (expected, spoken_word) in enumerate(zip(ref_words, self.words)):
             error, readable, ssml = ref_phonemes[i].compare(spoken_word.phonemes)
             if error >= 2:
-                mispronounced.append((expected, error))  # tuple of (word, error)
+                bit_errors.append(1)
                 readable_fb.append(f"Let's work on your pronunciation of: {expected}")
                 readable_fb.extend(readable)
                 ssml_fb.append(None)
                 ssml_fb.extend(ssml)
+            else:
+                bit_errors.append(0)
 
-        if mispronounced:
-            readable_fb.insert(0, f"You mispronounced {len(mispronounced)} words.")
+        if sum(bit_errors):
+            readable_fb.insert(0, f"You mispronounced {sum(bit_errors)} words.")
             ssml_fb.insert(0, None)
-        return mispronounced, readable_fb, ssml_fb
+        return bit_errors, readable_fb, ssml_fb
 
 
 class Word:

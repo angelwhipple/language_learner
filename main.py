@@ -143,8 +143,8 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
 
-    ref_std = load_reference_json("resources/custom_std_data.json")
-    ref_mean = load_reference_json("resources/custom_mean_data.json")
+    # ref_std = load_reference_json("resources/custom_std_data.json")
+    # ref_mean = load_reference_json("resources/custom_mean_data.json")
     sentence_dict = load_sentences()
 
     user = User()
@@ -194,13 +194,6 @@ if __name__ == "__main__":
             errors, readable_feedback, ssml_feedback = sample.evaluate_pronunciation(expected_words, expected_phonemes)
             emotion_map = feedback.detect_emotion_from_video(video_capture, v_frames, v_timestamps, sample.words)
             feedback.process_feedback(user, errors, readable_feedback, ssml_feedback, emotion_map)
-            # TODO: UI polish
-            #   - display mispronounced words in red
-            #   - start/stop recording buttons
-            #   - display video & spectrogram in separate/smaller window
-            # TODO: future iterations/improvements
-            #   - vowel formant analysis, experiment with speaker intrinsic vs. extrinsic reference data
-            #   - gaps or pauses in speech, lack of speech input
         else:
             msg = "Input not recognized, please try again.\n"
             speak_feedback(msg, None)
