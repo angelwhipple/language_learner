@@ -9,6 +9,12 @@ import random
 from pytermgui import tim
 import boto3
 from playsound import playsound
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
 
 
 def load_text_file(filename):
