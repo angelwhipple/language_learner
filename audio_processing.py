@@ -10,11 +10,11 @@ from Levenshtein import distance as levenshtein_distance
 import parselmouth
 from textgrid import TextGrid
 import subprocess
-import time
 from scipy.io import wavfile
 import matplotlib.pyplot as plt
 
-
+HEX_GREEN = "00ff00"
+HEX_RED = "ff0000"
 CHUNK = 1024
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
@@ -23,25 +23,38 @@ HERTZ = 16000  # 16 kHz
 
 ARPA_VOWELS = {"IY", "IH", "EY", "EH", "AE", "AA", "AO", "OW", "UH", "UW", "AH", "ER"}  # missing AW, AY
 ARPA_TO_IPA = {
-    "AA": "ɑ", "AE": "æ", "AH": "ʌ", "AO": "ɔ", "AW": "aʊ", "AY": "aɪ",
-    "B": "b", "CH": "tʃ", "D": "d", "DH": "ð", "EH": "ɛ", "ER": "ɝ",
-    "EY": "eɪ", "F": "f", "G": "ɡ", "HH": "h", "IH": "ɪ", "IY": "i",
-    "JH": "dʒ", "K": "k", "L": "l", "M": "m", "N": "n", "NG": "ŋ",
-    "OW": "oʊ", "OY": "ɔɪ", "P": "p", "R": "ɹ", "S": "s", "SH": "ʃ",
-    "T": "t", "TH": "θ", "UH": "ʊ", "UW": "u", "V": "v", "W": "w",
-    "Y": "j", "Z": "z", "ZH": "ʒ"
+    # Vowels
+    "AA0": "ɑ", "AA1": "ɑ́", "AA2": "ɑ̀",
+    "AE0": "æ", "AE1": "ǽ", "AE2": "æ̀",
+    "AH0": "ə", "AH1": "ʌ́", "AH2": "ʌ̀",
+    "AO0": "ɔ", "AO1": "ɔ́", "AO2": "ɔ̀",
+    "AW0": "aʊ", "AW1": "aʊ́", "AW2": "aʊ̀",
+    "AY0": "aɪ", "AY1": "aɪ́", "AY2": "aɪ̀",
+    "EH0": "ɛ", "EH1": "ɛ́", "EH2": "ɛ̀",
+    "ER0": "ɚ", "ER1": "ɝ́", "ER2": "ɝ̀",
+    "EY0": "eɪ", "EY1": "eɪ́", "EY2": "eɪ̀",
+    "IH0": "ɪ", "IH1": "ɪ́", "IH2": "ɪ̀",
+    "IY0": "i", "IY1": "í", "IY2": "ì",
+    "OW0": "oʊ", "OW1": "oʊ́", "OW2": "oʊ̀",
+    "OY0": "ɔɪ", "OY1": "ɔɪ́", "OY2": "ɔɪ̀",
+    "UH0": "ʊ", "UH1": "ʊ́", "UH2": "ʊ̀",
+    "UW0": "u", "UW1": "ú", "UW2": "ù",
+
+    # Consonants
+    "B": "b", "CH": "tʃ", "D": "d", "DH": "ð", "F": "f",
+    "G": "ɡ", "HH": "h", "JH": "dʒ", "K": "k", "L": "l",
+    "M": "m", "N": "n", "NG": "ŋ", "P": "p", "R": "ɹ",
+    "S": "s", "SH": "ʃ", "T": "t", "TH": "θ", "V": "v",
+    "W": "w", "Y": "j", "Z": "z", "ZH": "ʒ"
 }
 PUNCTUATION = string.punctuation.replace("'", "")
 
 
 def arpa_to_ipa(arpa_phoneme):
-    base = ''.join([c for c in arpa_phoneme if not c.isdigit()])
-    return ARPA_TO_IPA.get(base, None)
+    return ARPA_TO_IPA.get(arpa_phoneme, None)
 
 
 def run_mfa_alignment():
-    print("Running MFA alignment...")
-    start_time = time.time()
     try:
         result = subprocess.run(
             ["bash", "./setup_mfa.sh"],
@@ -49,8 +62,6 @@ def run_mfa_alignment():
             capture_output=True,  # Capture stdout/stderr
             text=True  # Return string output
         )
-        elapsed = time.time() - start_time
-        print(f"Alignment complete in {elapsed:.2f} seconds.")
     except subprocess.CalledProcessError as e:
         print(f"MFA Script failed with error: {e.stderr}")
 
@@ -93,7 +104,6 @@ class AudioRecorder:
             data = self.in_stream.read(CHUNK)
             frames.append(data)
         self.in_stream.stop_stream()
-        print("Finished recording.")
 
         return frames
 
@@ -103,7 +113,6 @@ class AudioRecorder:
         for frame in frames:
             self.out_stream.write(frame)
         self.out_stream.stop_stream()
-        print("Playback complete.")
 
     def save(self, frames, filename):
         with wave.open(filename, 'wb') as wf:
@@ -179,18 +188,35 @@ class VocalSample:
         bit_errors, readable_fb, ssml_fb = [], [], []
 
         for i, (expected, spoken_word) in enumerate(zip(ref_words, self.words)):
-            error, readable, ssml = ref_phonemes[i].compare(spoken_word.phonemes)
-            if error >= 2:
-                bit_errors.append(1)
-                readable_fb.append(f"Let's work on your pronunciation of: {expected}")
-                readable_fb.extend(readable)
-                ssml_fb.append(None)
-                ssml_fb.extend(ssml)
-            else:
+            error = ref_phonemes[i].compare(spoken_word.phonemes)
+            if error == 0:
                 bit_errors.append(0)
+            elif error < 0:
+                bit_errors.append(1)
+                readable_fb.append(f"Your pronunciation of {expected} was unclear.")
+                ssml_fb.append(None)
+            else:
+                bit_errors.append(1)
+                ipa_actual = "".join([arpa_to_ipa(ph) for ph in spoken_word.phonemes.phonemes])
+                ipa_expected = "".join([arpa_to_ipa(ph) for ph in ref_phonemes[i].phonemes])
+                ssml = f'''
+                    <speak>
+                    <prosody rate="medium">Instead of </prosody>
+                    <break time="500ms"/>
+                    <prosody rate="60%"><phoneme alphabet="ipa" ph="{ipa_actual}">{spoken_word.text}</phoneme></prosody>
+                    <break time="500ms"/>
+                    <prosody rate="medium"> try </prosody>
+                    <break time="500ms"/>
+                    <prosody rate="60%"><phoneme alphabet="ipa" ph="{ipa_expected}">{expected}</phoneme></prosody>
+                    </speak>
+                    '''
+                ssml_fb.append(ssml)
+                readable = (f"Instead of [b][color={HEX_RED}]{spoken_word.text.lower()}[/color][/b]"
+                            f" try [b][color={HEX_GREEN}]{expected.lower()}[/color][/b]")
+                readable_fb.append(readable)
 
         if sum(bit_errors):
-            readable_fb.insert(0, f"You mispronounced {sum(bit_errors)} words.")
+            readable_fb.insert(0, f"You mispronounced {sum(bit_errors)} word{'s.' if sum(bit_errors) > 1 else '.'}")
             ssml_fb.insert(0, None)
         return bit_errors, readable_fb, ssml_fb
 
@@ -209,37 +235,10 @@ class Phonemes:
         self.phonemes = phonemes
 
     def compare(self, other):
-        readable_fb, ssml_fb = [], []
         distance = levenshtein_distance(self.phonemes, other.phonemes)
-        for (expected, actual) in zip(self.get_base_phonemes(), other.get_base_phonemes()):
-            ipa_expected, ipa_actual = arpa_to_ipa(expected), arpa_to_ipa(actual)
-            if actual == 'SPN':
-                ssml = f'''
-                <speak>
-                <prosody rate="medium">Trying pronouncing </prosody>
-                <break time="500ms"/>
-                <prosody rate="x-slow"><phoneme alphabet="ipa" ph="{ipa_expected}">{expected}</phoneme></prosody>
-                <break time="500ms"/>
-                <prosody rate="medium"> a bit clearer.</prosody>
-                </speak>
-                '''
-                readable_fb.append(f"Try pronouncing {expected} a bit clearer.")
-                ssml_fb.append(ssml)
-            elif expected != actual:
-                ssml = f'''
-                <speak>
-                <prosody rate="medium">Instead of </prosody>
-                <break time="500ms"/>
-                <prosody rate="x-slow"><phoneme alphabet="ipa" ph="{ipa_actual}">{actual}</phoneme></prosody>
-                <break time="500ms"/>
-                <prosody rate="medium"> try </prosody>
-                <break time="500ms"/>
-                <prosody rate="x-slow"><phoneme alphabet="ipa" ph="{ipa_expected}">{ipa_expected}</phoneme></prosody>
-                </speak>
-                '''
-                readable_fb.append(f"Instead of {actual}, try {expected}.")
-                ssml_fb.append(ssml)
-        return distance, readable_fb, ssml_fb
+        if 'SPN' in set(other.phonemes):    # unidentified noise
+            return -1
+        return distance
 
     def get_base_phonemes(self):
         return [''.join([c for c in phoneme if not c.isdigit()]) for phoneme in self.phonemes]

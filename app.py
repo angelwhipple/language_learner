@@ -1,5 +1,6 @@
 import io
 from kivy.app import App
+from kivy.lang import Builder
 from kivy.properties import StringProperty, NumericProperty
 import audio_processing as audio_proc
 import video_processing as video_proc
@@ -11,7 +12,9 @@ import threading
 from kivy.uix.image import Image
 from kivy.clock import Clock
 from kivy.graphics.texture import Texture
+from kivy.uix.settings import SettingsWithSidebar
 import cv2
+import time
 
 
 HEX_GREEN = "00ff00"
@@ -23,12 +26,17 @@ class ReactiveBuffer(io.StringIO):
     def __init__(self, on_write_callback):
         super().__init__()
         self.on_write_callback = on_write_callback
+        self._temp_buffer = ""
 
     def write(self, s):
-        result = super().write(s)
-        if self.on_write_callback:
-            self.on_write_callback(self.getvalue())
-        return result
+        self._temp_buffer += s
+        if '\n' in self._temp_buffer:
+            lines = self._temp_buffer.split('\n')
+            for line in lines[:-1]:  # all complete lines
+                if self.on_write_callback:
+                    Clock.schedule_once(lambda dt, l=line: self.on_write_callback(l))
+            self._temp_buffer = lines[-1]  # keep partial line in buffer
+        return len(s)
 
 
 class LiveFeed(Image):
@@ -53,7 +61,7 @@ class LiveFeed(Image):
             if not ret:
                 return
 
-        frame = cv2.flip(frame, 0)
+        frame = cv2.flip(frame, -1)
         buf = frame.tobytes()
         texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='bgr')
         texture.blit_buffer(buf, colorfmt='bgr', bufferfmt='ubyte')
@@ -66,13 +74,13 @@ class LiveFeed(Image):
 
 
 class TestApp(App):
-    user_name = StringProperty()
+    username = StringProperty()
     sentence = StringProperty()
     evaluation = StringProperty()
     system_feedback = StringProperty(DEFAULT_PROMPT)
-    score = NumericProperty()
     state = StringProperty("WAITING")
-    b2_text = StringProperty("Record audio")
+    difficulty = StringProperty("EASY")
+    score = NumericProperty(0)
 
     def __init__(self, sentences, user, recorder, transcriber, video_cap, feedback, **kwargs):
         super().__init__(**kwargs)
@@ -83,26 +91,64 @@ class TestApp(App):
         self.video_cap = video_cap
         self.feedback = feedback
 
+    def build(self):
+        self.settings_cls = SettingsWithSidebar
+        return Builder.load_file("test.kv")
+
+    def build_config(self, config):
+        config.setdefaults('general', {
+            'username': 'Whipple',
+            'normalization': 'Z-score'
+        })
+        self.username = self.config.get('general', 'username')
+
+    def build_settings(self, settings):
+        settings.add_json_panel('General', self.config, data="""
+        [
+            {
+                "type": "string", 
+                "title": "Username", 
+                "desc": "Enter your username", 
+                "section": "general", 
+                "key": "username"
+            },
+            {
+                "type": "options", 
+                "title": "Normalization method", 
+                "desc": "Choose a normalization method for vowel analysis", 
+                "section": "general", 
+                "key": "normalization",
+                "options": ["Z-score", "Max-scaling"]
+            }
+        ]
+        """)
+
+    def on_config_change(self, config, section, key, value):
+        print(f'Config changed: [{section}] {key} = {value}')
+        if section == 'general' and key == 'username':
+            self.username = value
+
+    def open_settings_panel(self):
+        self.open_settings()
+
     def on_quit(self):
         self.recorder.destroy()
         self.video_cap.destroy()
         self.stop()
 
     def on_b2_press(self):
+        button_2 = App.get_running_app().root.ids.button_2
         if self.state == "WAITING":
-            # TODO: UI polish
-            #   - gray out/disable record button while process runs
-            #   - block until pipe finishes
-
-            self.run_pipeline_async()
             self.state = "EVALUATE"
-            self.b2_text = "Next example"
+            self.run_pipeline_async()
+            button_2.text = "Next example"
+            button_2.disabled = True
         elif self.state == "EVALUATE":
-            self.sentence = main.select_sentence(self.sentences, self.user.get_level())
             self.state = "WAITING"
             self.system_feedback = DEFAULT_PROMPT
-            self.b2_text = "Record audio"
+            self.sentence = main.select_sentence(self.sentences, self.user.get_level())
             self.evaluation = ""
+            button_2.text = "Record audio"
 
     def set_system_feedback(self, text):
         self.system_feedback = text
@@ -125,10 +171,10 @@ class TestApp(App):
 
     def _run_pipeline(self):
         buf = ReactiveBuffer(lambda output: Clock.schedule_once(lambda dt: self.set_system_feedback(output)))
-        duration = main.set_recording_duration(user.get_level())
         thread_results = {}
 
         with redirect_stdout(buf):
+            duration = main.set_recording_duration(self.user.get_level())
             audio_thread = main.run_with_result(
                 target=self.recorder.record,
                 args=(duration,),
@@ -162,15 +208,23 @@ class TestApp(App):
             video_thread.join()
             self.recorder.save(audio, 'audio/sample.wav')
             self.transcriber.transcribe('audio/sample.wav', 'audio/sample.lab')
+
+            print('Running audiovisual analysis...')
+            start_time = time.time()
             audio_proc.run_mfa_alignment()
             sample = audio_proc.VocalSample('audio/sample.wav', 'audio/sample.TextGrid')
-
             expected_words, expected_phonemes = self.transcriber.text_to_phonemes(self.sentence)
             errors, readable_feedback, ssml_feedback = sample.evaluate_pronunciation(expected_words, expected_phonemes)
-
             self.visualize_word_accuracy(expected_words, errors)
             emotion_map = self.feedback.detect_emotion_from_video(self.video_cap, v_frames, v_timestamps, sample.words)
+            elapsed = time.time() - start_time
+            print(f"Analysis complete in {elapsed:.2f} seconds.")
             self.feedback.process_feedback(self.user, errors, readable_feedback, ssml_feedback, emotion_map)
+            self.score = self.user.get_points()
+            self.difficulty = self.user.get_level()
+
+            button_2 = App.get_running_app().root.ids.button_2
+            button_2.disabled = False
 
 
 if __name__ == '__main__':
@@ -185,7 +239,6 @@ if __name__ == '__main__':
     feedback = main.IntegratedFeedbackModule()
     app = TestApp(sentences, user, recorder, transcriber, video_cap, feedback)
 
-    app.user_name = "Whipple"
     app.sentence = main.select_sentence(sentences, user.get_level())
     app.run()
 

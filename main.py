@@ -36,14 +36,16 @@ def load_reference_json(filename):
 
 
 def load_sentences():
-    sentence_dict = {difficulty.upper(): load_text_file(f"resources/{difficulty}_sentences.txt").split("\n")
+    sentence_dict = {difficulty.upper(): set(load_text_file(f"resources/{difficulty}_sentences.txt").split("\n"))
                      for difficulty in ["easy", "medium", "hard"]}
     return sentence_dict
 
 
 def select_sentence(sentence_dict, difficulty):
     sentences = sentence_dict[difficulty]
-    return sentences[random.randint(0, len(sentences) - 1)]
+    selected = list(sentences)[random.randint(0, len(sentences) - 1)]
+    sentences.remove(selected)
+    return selected
 
 
 def set_recording_duration(difficulty):
@@ -66,7 +68,7 @@ def speak_feedback(readable_feedback, ssml_feedback, text_type='text'):
                          region_name="us-east-1"
                          )
 
-    print(f"OS: {readable_feedback}")
+    print(f"[b]Polly:[/b] {readable_feedback}")
     response = polly.synthesize_speech(
         Text=ssml_feedback if text_type == 'ssml' else readable_feedback,
         TextType=text_type,
@@ -96,6 +98,9 @@ class User:
     def get_level(self):
         return self.level
 
+    def get_points(self):
+        return self.points
+
     def get_level_from_points(self):
         for level in reversed(self.pt_thresholds):  # Check HARD → EASY
             if self.points >= self.pt_thresholds[level]:
@@ -122,20 +127,20 @@ class IntegratedFeedbackModule:
         return word_to_emotion
 
     def is_confused(self, emotion):
-        return emotion == 'angry' or emotion == 'fear' or emotion == 'surprise'
+        return emotion == 'angry' or emotion == 'disgust' or emotion == 'surprise'
 
     def process_feedback(self, user, errors, readable_feedback, ssml_feedback, emotions):
         confusion_detected = any(self.is_confused(emote) for emote in emotions.values())
-        if errors:
+        if sum(errors):
             user.subtract_points(2 if confusion_detected else 1)
             speak_feedback(f"Your pronunciation could use some work.", None)
             for text, ssml in zip(readable_feedback, ssml_feedback):
                 speak_feedback(text, ssml, 'ssml' if ssml else 'text')
-        elif not errors and confusion_detected:
+        elif not sum(errors) and confusion_detected:
             speak_feedback(f"Perfect pronunciation, but you seemed a bit confused on that exercise. Let's "
-                           f"do some additional practice.", None)
+                           f"do some more practice.", None)
         else:
-            user.add_points(1)
+            user.add_points(2)
             speak_feedback(f"Perfect pronunciation on that exercise! Let's move on.", None)
 
 

@@ -4,12 +4,24 @@ FloatLayout:
         size_hint: 0.2, 0.3
         pos_hint: {"right": 1, "top": 1}
 
+    Label:
+        size_hint: 0.2, 0.1
+        pos_hint: {"left": 0, "top": 0.9}
+        text: f"[b]Score:[/b] {app.score}"
+        markup: True
+
+    Label:
+        size_hint: 0.2, 0.1
+        pos_hint: {"left": 0, "top": 1}
+        text: f"[b]Difficulty:[/b] {app.difficulty}"
+        markup: True
+
     BoxLayout:
         orientation: 'vertical'
         size_hint: 1, 1
 
         Label:
-            text: f"[b]Welcome to the Language Learner, {app.user_name}[/b]"
+            text: f"[b]Welcome to the Language Learner, {app.username}[/b]"
             size_hint: 1, 0.1
             markup: True
         ScrollView:
@@ -31,10 +43,12 @@ FloatLayout:
 
                 Label:
                     text: f"[b]Your sentence[/b]"
+                    font_size: '24sp'
                     markup: True
                 Label:
-                    text: f"{app.sentence}"
+                    text: app.sentence
                     text_size: self.width, None
+                    font_size: '24sp'
                     halign: 'center'
                     markup: True
 
@@ -45,10 +59,12 @@ FloatLayout:
 
                 Label:
                     text: f"[b]Evaluation[/b]"
+                    font_size: '24sp'
                     markup: True
                 Label:
                     text: app.evaluation
                     text_size: self.width, None
+                    font_size: '24sp'
                     halign: 'center'
                     markup: True
 
@@ -61,5 +77,11 @@ FloatLayout:
                 on_press: app.on_quit()
 
             Button:
-                text: app.b2_text
+                text: "Settings"
+                on_press: app.open_settings_panel()
+                disabled: False
+
+            Button:
+                id: button_2
+                text: "Record audio"
                 on_press: app.on_b2_press()

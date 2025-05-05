@@ -13,14 +13,21 @@ The **Language Learning Companion** is an adaptive language learning tool design
 3. A webcam detects the user's emotional state (e.g., frustration or confidence).
 4. Based on performance and emotions, the system adjusts the difficulty of subsequent exercises and provides personalized feedback.
 
+### File Structure
+- `audio/` contains audio (.mp3), text (.lab), and alignment (.TextGrid) files for recorded audio
+- `resources/` contains resources the program needs to run like practice sentences, and reference vowel pronunciation data
+- `spectrogram/` contains a spectrogram of the user's recorded audio frequencies
+- `audio_processing.py` contains modules for audio sampling and phonetic analysis, including a `VocalSample`, `Phonemes`, `Words`, `Recorder`, and `Transcriber` class
+- `video_processing.py`
+- `app.py` is the current main file. Run `python3 app.py` to start the UI and test the program
+- `main.py` is the *former* main file. Run `python3 main.py` to see a terminal-driven version of the system
+- `calibrate.py` 
+
 ### Tech Stack
 - Speech Processing: PyAudio, librosa
 - Emotion Detection: OpenCV, DeepFace
 - Programming Language: Python
 - Platform: macOS (tested)
-
-### Current Status
-The project is in its prototype phase, focusing on speech processing and affect recognition. Future iterations may integrate handwriting or type analysis.
 
 ### Credits
 - LibriSpeech dataset (960h of English speech)
