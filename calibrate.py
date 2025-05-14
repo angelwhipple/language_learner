@@ -14,17 +14,19 @@ def gen_normalized_ref_vowels(recorder, transcriber):
     transcriber.transcribe('audio/ref.wav', 'audio/ref.lab')
     audio_proc.run_mfa_alignment()
     sample = audio_proc.VocalSample('audio/ref.wav', 'audio/ref.TextGrid')
-    print(f"\nPhonemes: {sample.phonemes}")
-    print(f"Vowels: {sample.vowels}")
-    missing = audio_proc.validate_vowel_coverage(sample.vowels)
+    phonemes = sample.words[0].phonemes.join_phonemes([word.phonemes for word in sample.words[1:]])
+    vowels = sample.words[0].vowels.merge_vowels([word.vowels for word in sample.words[1:]])
+    print(f"\nPhonemes: {phonemes}")
+    print(f"Vowels: {vowels}")
+    missing = audio_proc.validate_vowel_coverage(vowels)
     if missing:
         print(f"Missing vowels: {" ".join(missing)}")
         msg = "Hmm, that wasn’t clear enough. Please try again, reading the sentence slowly and carefully."
     else:
-        sample.vowels.gen_reference_data()
-        normalized = sample.vowels.normalize_z_score(
-            *sample.vowels.get_mean_formant_values(),
-            *sample.vowels.get_formant_std(),
+        vowels.gen_reference_data()
+        normalized = vowels.normalize_z_score(
+            *vowels.get_mean_formant_values(),
+            *vowels.get_formant_std(),
         )
         normalized.gen_reference_map('resources/custom_formant_data.json')
         msg = "That was good, thanks!."

@@ -15,7 +15,7 @@ from kivy.graphics.texture import Texture
 from kivy.uix.settings import SettingsWithSidebar
 import cv2
 import time
-
+import gpt
 
 HEX_GREEN = "00ff00"
 HEX_RED = "ff0000"
@@ -98,7 +98,9 @@ class TestApp(App):
     def build_config(self, config):
         config.setdefaults('general', {
             'username': 'Whipple',
-            'normalization': 'Z-score'
+            'gen_method': 'Basic',
+            'norm_method': 'Z-score',
+            'speaker': 'Developer'
         })
         self.username = self.config.get('general', 'username')
 
@@ -108,16 +110,32 @@ class TestApp(App):
             {
                 "type": "string", 
                 "title": "Username", 
-                "desc": "Enter your username", 
+                "desc": "", 
                 "section": "general", 
                 "key": "username"
+            },
+            {
+                "type": "options", 
+                "title": "Sentence generation", 
+                "desc": "", 
+                "section": "general", 
+                "key": "gen_method",
+                "options": ["Basic", "AI-generated"]
+            },
+            {
+                "type": "options", 
+                "title": "Reference speaker", 
+                "desc": "Choose a reference dataset for vowel analysis", 
+                "section": "general", 
+                "key": "speaker",
+                "options": ["Hillenbrand dataset", "Developer"]
             },
             {
                 "type": "options", 
                 "title": "Normalization method", 
                 "desc": "Choose a normalization method for vowel analysis", 
                 "section": "general", 
-                "key": "normalization",
+                "key": "norm_method",
                 "options": ["Z-score", "Max-scaling"]
             }
         ]
@@ -137,18 +155,29 @@ class TestApp(App):
         self.stop()
 
     def on_b2_press(self):
-        button_2 = App.get_running_app().root.ids.button_2
+        button_2, button_3 = App.get_running_app().root.ids.button_2, App.get_running_app().root.ids.button_3
         if self.state == "WAITING":
             self.state = "EVALUATE"
-            self.run_pipeline_async()
+            self.run_pipeline_async(self._run_audiovisual_pipeline)
             button_2.text = "Next example"
-            button_2.disabled = True
+            button_2.disabled = button_3.disabled = True
         elif self.state == "EVALUATE":
             self.state = "WAITING"
             self.system_feedback = DEFAULT_PROMPT
-            self.sentence = main.select_sentence(self.sentences, self.user.get_level())
+            if self.config.get('general', 'gen_method') == 'Basic':
+                self.sentence = main.select_sentence(self.sentences, self.user.get_level())
+            else:
+                chat_gpt = gpt.ChatGPT()
+                chat_gpt.request_sentence(self.user)
+                self.sentence = chat_gpt.request_sentence(self.user)
             self.evaluation = ""
             button_2.text = "Record audio"
+            button_3.disabled = True
+
+    def on_b3_press(self):
+        button_2, button_3 = App.get_running_app().root.ids.button_2, App.get_running_app().root.ids.button_3
+        button_3.disabled = button_3.disabled = True
+        self.run_pipeline_async(self._run_formant_analysis_pipeline)
 
     def set_system_feedback(self, text):
         self.system_feedback = text
@@ -166,10 +195,26 @@ class TestApp(App):
             colored_words.append(f"[b][color={color}]{word}[/color][/b]")
         self.evaluation = " ".join(colored_words)
 
-    def run_pipeline_async(self):
-        threading.Thread(target=self._run_pipeline, daemon=True).start()
+    def run_pipeline_async(self, pipeline_func):
+        threading.Thread(target=pipeline_func, daemon=True).start()
 
-    def _run_pipeline(self):
+    def _run_formant_analysis_pipeline(self):
+        buf = ReactiveBuffer(lambda output: Clock.schedule_once(lambda dt: self.set_system_feedback(output)))
+
+        with redirect_stdout(buf):
+            user_vowels = self.user.get_vowel_history()
+            readable_fb, ssml_fb = user_vowels.evaluate_formants(
+                self.config.get('general', 'sex'),
+                self.config.get('general', 'speaker') == 'Developer'
+            )
+            for text, ssml in zip(readable_fb, ssml_fb):
+                main.speak_feedback(text, ssml, 'ssml' if ssml else 'text')
+
+        button_2, button_3 = App.get_running_app().root.ids.button_2, App.get_running_app().root.ids.button_3
+        button_2.disabled = False
+
+    def _run_audiovisual_pipeline(self):
+        button_2, button_3 = App.get_running_app().root.ids.button_2, App.get_running_app().root.ids.button_3
         buf = ReactiveBuffer(lambda output: Clock.schedule_once(lambda dt: self.set_system_feedback(output)))
         thread_results = {}
 
@@ -213,17 +258,20 @@ class TestApp(App):
             start_time = time.time()
             audio_proc.run_mfa_alignment()
             sample = audio_proc.VocalSample('audio/sample.wav', 'audio/sample.TextGrid')
+            vowels = sample.words[0].vowels.merge_vowels([word.vowels for word in sample.words[1:]])
             expected_words, expected_phonemes = self.transcriber.text_to_phonemes(self.sentence)
-            errors, readable_feedback, ssml_feedback = sample.evaluate_pronunciation(expected_words, expected_phonemes)
+            errors, readable, ssml, missed = sample.evaluate_pronunciation(expected_words, expected_phonemes)
+
             self.visualize_word_accuracy(expected_words, errors)
             emotion_map = self.feedback.detect_emotion_from_video(self.video_cap, v_frames, v_timestamps, sample.words)
             elapsed = time.time() - start_time
             print(f"Analysis complete in {elapsed:.2f} seconds.")
-            self.feedback.process_feedback(self.user, errors, readable_feedback, ssml_feedback, emotion_map)
+            self.feedback.cross_validate(self.user, errors, readable, ssml, emotion_map)
             self.score = self.user.get_points()
             self.difficulty = self.user.get_level()
+            self.user.update_vowel_history(vowels)
+            self.user.update_stats(expected_words, missed)
 
-            button_2 = App.get_running_app().root.ids.button_2
             button_2.disabled = False
 
 
@@ -236,9 +284,8 @@ if __name__ == '__main__':
     recorder = audio_proc.AudioRecorder()
     transcriber = audio_proc.Transcriber()
     video_cap = video_proc.VideoCapture()
-    feedback = main.IntegratedFeedbackModule()
+    feedback = main.FeedbackModule()
     app = TestApp(sentences, user, recorder, transcriber, video_cap, feedback)
 
     app.sentence = main.select_sentence(sentences, user.get_level())
     app.run()
-

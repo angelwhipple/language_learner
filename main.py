@@ -15,6 +15,7 @@ load_dotenv()
 
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
 AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 def load_text_file(filename):
@@ -24,10 +25,8 @@ def load_text_file(filename):
 
 def load_csv(filename):
     with open(filename, 'r') as csvfile:
-        csvreader = csv.reader(csvfile)
-        header = next(csvreader)
-        data = [row for row in csvreader]
-    return header, data
+        csvreader = csv.DictReader(csvfile)
+    return csvreader
 
 
 def load_reference_json(filename):
@@ -49,7 +48,7 @@ def select_sentence(sentence_dict, difficulty):
 
 
 def set_recording_duration(difficulty):
-    return 3.5 if difficulty == "EASY" else 6 if difficulty == "MEDIUM" else 8
+    return 4.5 if difficulty == "EASY" else 6 if difficulty == "MEDIUM" else 8
 
 
 def run_with_result(target, args, result_container, key):
@@ -86,6 +85,10 @@ class User:
     def __init__(self):
         self.level = "EASY"  # level 1, 2, or 3
         self.points = 0
+        self.vowels = audio_proc.Vowels([])
+        self.accuracy = 1.0
+        self.total_words = 0
+        self.recently_missed = []
 
     def add_points(self, points):
         self.points = min(10, self.points + points)
@@ -107,8 +110,20 @@ class User:
                 return level
         return "EASY"  # Fallback
 
+    def update_vowel_history(self, vowels):
+        self.vowels = self.vowels.merge_vowels([vowels])
 
-class IntegratedFeedbackModule:
+    def get_vowel_history(self):
+        return self.vowels
+
+    def update_stats(self, new_words, missed_words):
+        correct = self.total_words * self.accuracy
+        self.total_words += len(new_words)
+        self.accuracy = correct + (len(new_words) - len(missed_words)) / self.total_words
+        self.recently_missed = missed_words
+
+
+class FeedbackModule:
     def get_video_frame_for_word(self, word, video_timestamps):
         midpoint = (word.start_time + word.end_time) / 2
         frame_idx = min(range(len(video_timestamps)), key=lambda i: abs(video_timestamps[i] - midpoint))
@@ -123,14 +138,15 @@ class IntegratedFeedbackModule:
             if confidence > 0.75:
                 word_to_emotion[word.text] = emotion
             else:
-                word_to_emotion[word.text] = None
+                word_to_emotion[word.text] = "null"
         return word_to_emotion
 
     def is_confused(self, emotion):
         return emotion == 'angry' or emotion == 'disgust' or emotion == 'surprise'
 
-    def process_feedback(self, user, errors, readable_feedback, ssml_feedback, emotions):
+    def cross_validate(self, user, errors, readable_feedback, ssml_feedback, emotions):
         confusion_detected = any(self.is_confused(emote) for emote in emotions.values())
+        speak_feedback(f"Your pronunciation could use some work.", None)
         if sum(errors):
             user.subtract_points(2 if confusion_detected else 1)
             speak_feedback(f"Your pronunciation could use some work.", None)
@@ -148,15 +164,12 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore")
     logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
 
-    # ref_std = load_reference_json("resources/custom_std_data.json")
-    # ref_mean = load_reference_json("resources/custom_mean_data.json")
     sentence_dict = load_sentences()
-
     user = User()
     recorder = audio_proc.AudioRecorder()
     transcriber = audio_proc.Transcriber()
     video_capture = video_proc.VideoCapture()
-    feedback = IntegratedFeedbackModule()
+    feedback = FeedbackModule()
     thread_results = {}
 
     while True:
@@ -198,7 +211,7 @@ if __name__ == "__main__":
             expected_words, expected_phonemes = transcriber.text_to_phonemes(sentence)
             errors, readable_feedback, ssml_feedback = sample.evaluate_pronunciation(expected_words, expected_phonemes)
             emotion_map = feedback.detect_emotion_from_video(video_capture, v_frames, v_timestamps, sample.words)
-            feedback.process_feedback(user, errors, readable_feedback, ssml_feedback, emotion_map)
+            feedback.cross_validate(user, errors, readable_feedback, ssml_feedback, emotion_map)
         else:
             msg = "Input not recognized, please try again.\n"
             speak_feedback(msg, None)

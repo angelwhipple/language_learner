@@ -33,5 +33,5 @@ else
 fi
 
 rm -rf ~/Documents/MFA/temp/*
-mfa align ./audio/ english_us_arpa english_us_arpa ./audio/ --clean --num_jobs $MFA_NUM_JOBS
+time mfa align ./audio/ english_us_arpa english_us_arpa ./audio/ --clean --num_jobs $MFA_NUM_JOBS --quiet
 echo "Alignment complete."

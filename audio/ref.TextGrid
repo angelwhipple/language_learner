@@ -58,10 +58,10 @@ item []:
             text = "two" 
         intervals [12]:
             xmin = 4.63 
-            xmax = 5.17 
+            xmax = 5.16 
             text = "blue" 
         intervals [13]:
-            xmin = 5.17 
+            xmin = 5.16 
             xmax = 5.21 
             text = "" 
         intervals [14]:
@@ -106,10 +106,10 @@ item []:
             text = "the" 
         intervals [24]:
             xmin = 8.79 
-            xmax = 9.31 
+            xmax = 9.28 
             text = "peer" 
         intervals [25]:
-            xmin = 9.31 
+            xmin = 9.28 
             xmax = 9.98458 
             text = "" 
     item [2]:
@@ -236,10 +236,10 @@ item []:
             text = "L" 
         intervals [30]:
             xmin = 4.91 
-            xmax = 5.17 
+            xmax = 5.16 
             text = "UW1" 
         intervals [31]:
-            xmin = 5.17 
+            xmin = 5.16 
             xmax = 5.21 
             text = "" 
         intervals [32]:
@@ -352,13 +352,13 @@ item []:
             text = "P" 
         intervals [59]:
             xmin = 8.96 
-            xmax = 9.12 
+            xmax = 9.13 
             text = "IH1" 
         intervals [60]:
-            xmin = 9.12 
-            xmax = 9.31 
+            xmin = 9.13 
+            xmax = 9.28 
             text = "R" 
         intervals [61]:
-            xmin = 9.31 
+            xmin = 9.28 
             xmax = 9.98458 
             text = "" 

@@ -73,7 +73,7 @@ FloatLayout:
             size_hint: 1, 0.15
 
             Button:
-                text: "Quit program"
+                text: "Quit"
                 on_press: app.on_quit()
 
             Button:
@@ -85,3 +85,9 @@ FloatLayout:
                 id: button_2
                 text: "Record audio"
                 on_press: app.on_b2_press()
+
+            Button:
+                id: button_3
+                text: "Analyze vowels"
+                on_press: app.on_b3_press()
+                disabled: True

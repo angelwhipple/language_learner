@@ -1,0 +1,11 @@
+Run,Sentence,True positive,True negative,False positive,False negative
+1,He is at work.,0,4,0,0
+2,He had to reschedule the meeting due to a last minute conflict.,0,11,1,0
+3,This line is long.,0,4,0,0
+4,I want a snack.,1,2,1,0
+5,It's time for lunch.,1,3,0,0
+6,I forgot my phone.,0,4,0,0
+7,She forgot to send the email on time.,0,6,2,0
+8,I usually take the train to work.,1,6,0,0
+9,I need to go to the store to buy...,2,7,0,0
+10,I go to the store to buy some apples.,2,7,0,0

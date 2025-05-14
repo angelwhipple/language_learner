@@ -22,6 +22,7 @@ The **Language Learning Companion** is an adaptive language learning tool design
 - `app.py` is the current main file. Run `python3 app.py` to start the UI and test the program
 - `main.py` is the *former* main file. Run `python3 main.py` to see a terminal-driven version of the system
 - `calibrate.py` 
+- `setup_mfa.sh`
 
 ### Tech Stack
 - Speech Processing: PyAudio, librosa
