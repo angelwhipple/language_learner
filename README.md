@@ -4,28 +4,30 @@ The **Language Learning Companion** is an adaptive language learning tool design
 ### Key Features
 - **Speech Analysis:** Real-time pronunciation evaluation using audio input.
 - **Affect Recognition:** Detects user emotions (e.g., frustration, confidence) via webcam to adapt difficulty levels.
-- **Adaptive Feedback:** Provides tailored feedback and adjusts exercise complexity based on performance and emotional cues.
+- **Adaptive Feedback:** Tailors future exercises and adjusts difficulty based on performance and emotional cues.
 
 ### How It Works
-0. If the user wishes to base vowel normalization on their own vocals, run ```calibrate.py```
-1. The user speaks into their microphone to complete language exercises.
+0. Run `python app.py` to start the program.
+1. When ready, press "Record audio" and read the practice sentence clearly into the microphone.
 2. The system evaluates pronunciation errors using audio analysis.
 3. A webcam detects the user's emotional state (e.g., frustration or confidence).
-4. Based on performance and emotions, the system adjusts the difficulty of subsequent exercises and provides personalized feedback.
+4. Based on performance and emotions, the system tailors the content/difficulty of future training exercises, and offers pronunciation feedback.
 
 ### File Structure
 - `audio/` contains audio (.mp3), text (.lab), and alignment (.TextGrid) files for recorded audio
 - `resources/` contains resources the program needs to run like practice sentences, and reference vowel pronunciation data
 - `spectrogram/` contains a spectrogram of the user's recorded audio frequencies
 - `audio_processing.py` contains modules for audio sampling and phonetic analysis, including a `VocalSample`, `Phonemes`, `Words`, `Recorder`, and `Transcriber` class
-- `video_processing.py`
+- `video_processing.py` contains simple methods for recording and analyzing video frames
 - `app.py` is the current main file. Run `python3 app.py` to start the UI and test the program
 - `main.py` is the *former* main file. Run `python3 main.py` to see a terminal-driven version of the system
+- `gpt.py` contains methods for interfacing with the OpenAI API 
 - `calibrate.py` 
 - `setup_mfa.sh`
+- `results.ipynb` is a short Python notebook generating plots from accuracy test results
 
 ### Tech Stack
-- Speech Processing: PyAudio, librosa
+- Speech Processing: PyAudio, librosa, wav2vec
 - Emotion Detection: OpenCV, DeepFace
 - Programming Language: Python
 - Platform: macOS (tested)
